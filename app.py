@@ -167,6 +167,26 @@ st.markdown("""
         opacity: 0.8;
         font-size: 0.9rem;
     }
+    
+    /* Mobile-friendly audio controls */
+    audio {
+        width: 100% !important;
+        max-width: 100% !important;
+        height: 40px !important;
+    }
+    
+    /* Mobile responsive adjustments */
+    @media (max-width: 768px) {
+        .main-header h1 {
+            font-size: 1.5rem !important;
+        }
+        .translation-box {
+            font-size: 1.2rem !important;
+        }
+        .mode-section {
+            padding: 1rem !important;
+        }
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -448,28 +468,63 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
         return ""
 
 
-def speak(text: str, voice: str = "alloy", fmt: str = "mp3"):
-    """TTS -> bytes. No local conversion; we ask the API for mp3 or wav."""
+def speak(text: str, voice: str = "alloy", fmt: str = "wav"):
+    """TTS -> bytes with WAV audio output for better mobile compatibility."""
     if not text.strip():
-        return b"", "audio/mp3"
-
-    params = {
-        "model": TTS_MODEL,
-        "voice": voice,
-        "input": text,
-    }
-    # Ask the API for the format we want
-    if fmt in ("mp3", "wav"):
-        params["response_format"] = fmt
+        return b"", "audio/wav"
 
     try:
-        resp = client.audio.speech.create(**params)
+        # Always use WAV format for better mobile compatibility
+        resp = client.audio.speech.create(
+            model=TTS_MODEL,
+            voice=voice,
+            input=text,
+            response_format="wav"
+        )
+        mime = "audio/wav"
+            
         audio_bytes = resp.read()
-        mime = "audio/mp3" if fmt == "mp3" else "audio/wav"
         return audio_bytes, mime
     except Exception as e:
         st.error(f"TTS error: {e}")
-        return b"", "audio/mp3"
+        return b"", "audio/wav"
+
+
+def play_audio_mobile_friendly(audio_bytes: bytes, mime: str):
+    """Play audio with mobile browser compatibility."""
+    if not audio_bytes:
+        return
+        
+    # Use autoplay=False and start_time=0 for better mobile compatibility
+    try:
+        st.audio(audio_bytes, format=mime, start_time=0, autoplay=False)
+        
+        # Add a mobile-friendly play button instruction
+        st.markdown("""
+        <div style="text-align: center; margin: 0.5rem 0; padding: 0.5rem; 
+                    background: #e8f4fd; border-radius: 8px; color: #1f77b4;">
+            📱 <strong>スマートフォンユーザーへ:</strong> 
+            上の再生ボタンをタップして音声を聞いてください。<br>
+            <em>For mobile users: Tap the play button above to hear the audio.</em>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    except Exception as e:
+        st.warning(f"音声再生エラー: {e}")
+        
+        # Fallback: Provide download link for mobile
+        import base64
+        b64_audio = base64.b64encode(audio_bytes).decode()
+        audio_html = f"""
+        <div style="text-align: center; margin: 1rem 0;">
+            <a href="data:{mime};base64,{b64_audio}" download="translation_audio.wav" 
+               style="background: #667eea; color: white; padding: 0.5rem 1rem; 
+                      border-radius: 20px; text-decoration: none;">
+                📱 音声をダウンロード / Download Audio (WAV)
+            </a>
+        </div>
+        """
+        st.markdown(audio_html, unsafe_allow_html=True)
 
 
 # -----------------------------
@@ -520,9 +575,9 @@ with st.sidebar:
     voice_choice = st.selectbox("音声タイプ", list(voice_options.keys()), index=0)
     tts_voice = voice_options[voice_choice] if voice_choice else "alloy"
     
-    format_options = {"🎵 MP3": "mp3", "🔊 WAV": "wav"}
-    format_choice = st.selectbox("音声形式", list(format_options.keys()), index=0)
-    audio_format = format_options[format_choice] if format_choice else "mp3"
+    # Always use WAV format for better mobile compatibility
+    st.info("🔊 音声形式: WAV (モバイル互換性のため)")
+    audio_format = "wav"
     st.markdown('</div>', unsafe_allow_html=True)
 
 # read current choices from session
@@ -624,7 +679,7 @@ if mode.startswith("📝"):
         # Audio output
         audio_bytes, mime = speak(out, voice=tts_voice, fmt=audio_format)
         if audio_bytes:
-            st.audio(audio_bytes, format=mime)
+            play_audio_mobile_friendly(audio_bytes, mime)
     
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -710,7 +765,7 @@ elif mode.startswith("📷"):
 
                 audio_bytes, mime = speak(out, voice=tts_voice, fmt=audio_format)
                 if audio_bytes:
-                    st.audio(audio_bytes, format=mime)
+                    play_audio_mobile_friendly(audio_bytes, mime)
 
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -829,7 +884,7 @@ elif mode.startswith("🎤"):
 
                 audio_bytes, mime = speak(out, voice=tts_voice, fmt=audio_format)
                 if audio_bytes:
-                    st.audio(audio_bytes, format=mime)
+                    play_audio_mobile_friendly(audio_bytes, mime)
     
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -972,7 +1027,7 @@ elif mode.startswith("🗣️"):
                 
                 audio_bytes, mime = speak(translation, voice=tts_voice, fmt=audio_format)
                 if audio_bytes:
-                    st.audio(audio_bytes, format=mime)
+                    play_audio_mobile_friendly(audio_bytes, mime)
 
     # Conversation history
     if st.session_state.chat:
